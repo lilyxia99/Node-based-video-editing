@@ -1,9 +1,10 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel,QFileDialog
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel,QFileDialog,QMessageBox
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtCore import QUrl
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 from video_controls import VideoControls
+import os
 
 
 
@@ -20,6 +21,7 @@ class SequencePlayer(QWidget):
 
         # Controls and info
         self.info_label = QLabel("Playing sequence...")
+        layout = QVBoxLayout()
         
         # VideoControls for play/pause button and progress bar
         self.video_controls = VideoControls(self.media_player)
@@ -27,13 +29,19 @@ class SequencePlayer(QWidget):
         # Next and export buttons
         self.next_button = QPushButton("Next Video")
         self.next_button.clicked.connect(self.play_next_video)
-        self.export_button = QPushButton("Export Video")
-        self.export_button.clicked.connect(self.export_sequence)
-
-        # Layout
-        layout = QVBoxLayout()
         layout.addWidget(self.video_widget)
         layout.addWidget(self.info_label)
+        
+        self.export_button = QPushButton("Export Video")
+        self.export_button.clicked.connect(self.export_sequence)
+        layout.addWidget(self.export_button)
+        
+        # Export to EDL Button
+        self.export_del_button = QPushButton("Export to EDL")
+        self.export_del_button.clicked.connect(self.export_to_edl)
+        layout.addWidget(self.export_del_button)
+        
+        
         
         # Add video controls (play/pause button and progress bar)
         controls_layout = self.video_controls.create_controls()
@@ -127,3 +135,60 @@ class SequencePlayer(QWidget):
 
         except Exception as e:
             self.info_label.setText(f"Error exporting video: {str(e)}")
+            
+    def export_to_edl(self):
+        """
+        Export the sequence of videos to an EDL (Edit Decision List) format.
+        """
+        if not self.video_paths:
+            QMessageBox.critical(self, "Error", "No videos loaded to export.")
+            return
+
+        # Generate EDL content
+        edl_content = "TITLE: Exported Sequence\nFCM: NON-DROP FRAME\n"
+        current_timecode = 0
+
+        for i, video_path in enumerate(self.video_paths):
+            clip = VideoFileClip(video_path)
+            duration = clip.duration  # Duration in seconds
+
+            # Normalize and format file paths
+            normalized_path = os.path.abspath(video_path).replace("\\", "/")
+            clip_name = os.path.basename(video_path).replace(" ", "_")
+
+            edl_content += (
+                f"\n{str(i + 1).zfill(3)}  AX       V     C        "
+                f"{self.format_timecode(current_timecode)} {self.format_timecode(current_timecode + duration)} "
+                f"{self.format_timecode(current_timecode)} {self.format_timecode(current_timecode + duration)}\n"
+                f"* FROM CLIP NAME: {clip_name}\n"
+                f"* MEDIA FILE: {normalized_path}\n"
+            )
+            current_timecode += duration
+
+        # Save EDL to file
+        options = QFileDialog.Options()
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save EDL", "", "EDL Files (*.edl);;All Files (*)", options=options)
+
+        if save_path:
+            with open(save_path, 'w') as edl_file:
+                edl_file.write(edl_content)
+
+            QMessageBox.information(self, "Success", f"EDL exported to: {save_path}")
+
+
+
+    def format_timecode(self, seconds):
+        """
+        Convert seconds to EDL timecode format (HH:MM:SS:FF).
+
+        Args:
+            seconds (float): Time in seconds.
+
+        Returns:
+            str: Timecode in HH:MM:SS:FF format.
+        """
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        frames = int((seconds - int(seconds)) * 24)  # Assuming 24 fps
+        return f"{hours:02}:{minutes:02}:{secs:02}:{frames:02}"

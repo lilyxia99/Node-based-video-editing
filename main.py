@@ -45,6 +45,8 @@ class MainWindow(QMainWindow):
         delete_button = QPushButton("Delete Square")
         delete_button.clicked.connect(self.canvas.delete_square)
         controls_layout.addWidget(delete_button)
+        
+        
 
         layout.addLayout(controls_layout)
 
