@@ -41,10 +41,11 @@ class MainWindow(QMainWindow):
         connect_button.clicked.connect(lambda: self.canvas.connect_squares(1, 2))  # Connect square 1 and square 2
         controls_layout.addWidget(connect_button)
 
-        #delete button
-        delete_button = QPushButton("Delete Square")
-        delete_button.clicked.connect(self.canvas.delete_square)
+        # Replace the delete button logic
+        delete_button = QPushButton("Delete")
+        delete_button.clicked.connect(self.canvas.delete_selected)
         controls_layout.addWidget(delete_button)
+
         
         
 

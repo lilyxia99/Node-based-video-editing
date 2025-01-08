@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QFileDialog, QComboBox,QPushButton,QMenu
+from PyQt5.QtWidgets import QWidget, QFileDialog, QComboBox,QPushButton,QMenu,QInputDialog,QApplication
 from PyQt5.QtGui import QPainter, QColor, QPen, QPolygonF,QImage, QPixmap
 from PyQt5.QtCore import QRect, Qt, QPointF, QPoint, pyqtSignal
 from video_player import VideoPlayer
@@ -27,6 +27,8 @@ class Canvas(QWidget):
         self.sequence_player = SequencePlayer()
         self.setFocusPolicy(Qt.StrongFocus)
         self.preview_images = {}  # Store square ID to preview image mapping
+        
+        self.aliases = {}  # Dictionary to store aliases for each square
 
 
     def add_square(self):
@@ -36,6 +38,7 @@ class Canvas(QWidget):
         y = padding
         square_id = len(self.squares) + 1  # Unique ID for the square
         self.squares.append([x, y, size, square_id])  # Store as mutable list for updates
+        self.aliases[square_id] = "untitled"  # Assign default alias
         self.update()  # Trigger a repaint
 
     def play_sequence(self, sequence_name):
@@ -143,6 +146,12 @@ class Canvas(QWidget):
             # Draw the ID on top of the square
             painter.setPen(QPen(QColor("black"), 1))
             painter.drawText(QRect(x, y, size, size), Qt.AlignCenter, str(square_id))
+            
+                    # Draw the alias beneath the square
+            alias = self.aliases.get(square_id, "")
+            painter.setPen(QPen(QColor("white"), 1))
+            painter.drawText(QRect(x, y + size + 5, size, 20), Qt.AlignCenter, alias)
+
 
             dot_size = 10
             dot_x = x + size - dot_size // 2
@@ -184,6 +193,23 @@ class Canvas(QWidget):
         y_offset = self.height() - 20
         for idx, route in enumerate(self.generate_routes()):
             painter.drawText(10, y_offset - idx * 20, route)
+
+    def set_alias(self, square_id, alias):
+        """Set a new alias for a given square."""
+        if square_id in self.aliases:
+            self.aliases[square_id] = alias
+            self.update()
+            
+    def edit_alias(self, square_id):
+        """Open a dialog to edit the alias of the selected square."""
+        current_alias = self.aliases.get(square_id, "untitled")
+        new_alias, ok = QInputDialog.getText(self, "Edit Alias", "Enter new alias:", text=current_alias)
+        if ok and new_alias.strip():
+            self.aliases[square_id] = new_alias.strip()
+            self.update()  # Refresh the canvas to display the updated alias
+        # Return focus to the canvas
+        self.setFocus()
+
 
     def draw_arrow(self, painter, start, end):
         arrow_size = 10
@@ -317,8 +343,16 @@ class Canvas(QWidget):
             
     # short cut
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
-            self.delete_square()
+        """Handle key presses for canvas actions."""
+        # Check if the canvas is focused and no modal dialog is active
+        if self.hasFocus() and not QApplication.activeModalWidget():
+            if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+                self.delete_selected()  # Only delete squares/lines in the canvas
+            else:
+                super().keyPressEvent(event)  # Pass unhandled events to the parent
+        else:
+            super().keyPressEvent(event)  # Let dialogs handle their own events
+
             
     # right click menu----
             
@@ -333,10 +367,13 @@ class Canvas(QWidget):
                 # Show the context menu
                 context_menu = QMenu(self)
                 upload_action = context_menu.addAction("Upload/Replace Video")
+                edit_alias_action = context_menu.addAction("Edit Alias")  # Add "Edit Alias" action
                 action = context_menu.exec_(self.mapToGlobal(event.pos()))
                 
                 if action == upload_action:
                     self.upload_or_replace_video()  # Handle video upload/replacement
+                elif action == edit_alias_action:
+                    self.edit_alias(square_id)  # Handle alias editing
                 #防止鼠标粘连
                 self.dragging_square = None
                 return  # Exit after handling the menu
@@ -384,6 +421,7 @@ class Canvas(QWidget):
             "square_files": {int(k): v for k, v in self.square_files.items()},  # Ensure keys are integerspaths
             "connections": [
             (start[3], end[3]) for start, end in self.connections],  # Save only square IDs
+            "aliases": self.aliases,  # Save aliases
         }
         with open(file_path, 'w') as file:
             json.dump(data, file)
@@ -398,6 +436,7 @@ class Canvas(QWidget):
         # Restore squares and file associations
         self.squares = data.get("squares", [])
         self.square_files = {int(k): v for k, v in data.get("square_files", {}).items()}
+        self.aliases = data.get("aliases", {})  # Restore aliases
         connections_data = data.get("connections", [])
 
         # Clear previous state
@@ -438,6 +477,42 @@ class Canvas(QWidget):
         # Update sequences and refresh the canvas
         self.update_sequences()
         self.update()
+        
+    def delete_selected(self):
+        """Delete the currently selected square or connection."""
+        if self.selected_connection:
+            # Remove the selected connection
+            self.connections.remove(self.selected_connection)
+            self.selected_connection = None
+            print("Deleted selected connection.")
+        elif self.selected_square:
+            # Remove the selected square
+            square_id = self.selected_square[3]
+
+            # Remove the square
+            self.squares = [square for square in self.squares if square[3] != square_id]
+
+            # Remove associated connections
+            self.connections = [
+                conn for conn in self.connections
+                if conn[0][3] != square_id and conn[1][3] != square_id
+            ]
+
+            # Remove associated file
+            if square_id in self.square_files:
+                del self.square_files[square_id]
+
+            # Clear selection
+            self.selected_square = None
+
+            print(f"Deleted square {square_id} and updated connections.")
+        else:
+            print("No selection to delete.")
+
+        # Refresh canvas
+        self.update_sequences()
+        self.update()
+
         
     def delete_square(self):
             """
