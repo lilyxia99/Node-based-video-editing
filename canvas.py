@@ -1,10 +1,9 @@
 from PyQt5.QtWidgets import QWidget, QFileDialog, QComboBox,QPushButton,QMenu
-from PyQt5.QtGui import QPainter, QColor, QPen, QPolygonF
+from PyQt5.QtGui import QPainter, QColor, QPen, QPolygonF,QImage, QPixmap
 from PyQt5.QtCore import QRect, Qt, QPointF, QPoint, pyqtSignal
 from video_player import VideoPlayer
 from sequence_player import SequencePlayer
-
-
+import cv2
 
 class Canvas(QWidget):
     sequence_info_updated = pyqtSignal()  # Signal to notify when connections are updated
@@ -24,10 +23,11 @@ class Canvas(QWidget):
         self.setMouseTracking(True)
         self.sequence_player = SequencePlayer()
         self.setFocusPolicy(Qt.StrongFocus)
+        self.preview_images = {}  # Store square ID to preview image mapping
 
 
     def add_square(self):
-        size = 50  # Size of the square
+        size = 70  # Size of the square
         padding = 10  # Padding between squares
         x = len(self.squares) * (size + padding) + padding
         y = padding
@@ -128,6 +128,18 @@ class Canvas(QWidget):
             painter.setBrush(QColor("pink") if square == self.selected_square else QColor("lightblue"))
             painter.setPen(QPen(QColor("black"), 2))
             painter.drawRect(QRect(x, y, size, size))
+            
+            # Draw the preview image
+            if square_id in self.preview_images:
+                preview = QPixmap.fromImage(self.preview_images[square_id])
+                scaled_preview = preview.scaled(size - 10, size - 10, Qt.KeepAspectRatio)
+                preview_x = x + 5
+                preview_y = y + 5
+                painter.drawPixmap(preview_x, preview_y, scaled_preview)
+
+            # Draw the ID on top of the square
+            painter.setPen(QPen(QColor("black"), 1))
+            painter.drawText(QRect(x, y, size, size), Qt.AlignCenter, str(square_id))
 
             dot_size = 10
             dot_x = x + size - dot_size // 2
@@ -292,8 +304,27 @@ class Canvas(QWidget):
         if file_path:
             self.square_files[square_id] = file_path
             print(f"Assigned/replaced file for square {square_id}: {file_path}")
+            
+            # Extract and store the preview image
+            preview_image = self.extract_preview_image(file_path)
+            if preview_image:
+                self.preview_images[square_id] = preview_image
+                
             self.update_sequences()  # Update sequences to reflect the new video
             self.update()  # Refresh the canvas
+            
+    def extract_preview_image(self, video_path):
+        """Extract the first frame of the video as a preview image."""
+        cap = cv2.VideoCapture(video_path)
+        success, frame = cap.read()
+        cap.release()
+        if success:
+            # Convert to QImage
+            height, width, channel = frame.shape
+            bytes_per_line = channel * width
+            qimage = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            return qimage
+        return None
             
 # Save and Load---------------------------
 
