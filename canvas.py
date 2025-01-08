@@ -4,6 +4,7 @@ from PyQt5.QtCore import QRect, Qt, QPointF, QPoint, pyqtSignal
 from video_player import VideoPlayer
 from sequence_player import SequencePlayer
 import cv2
+import os
 
 class Canvas(QWidget):
     sequence_info_updated = pyqtSignal()  # Signal to notify when connections are updated
@@ -389,6 +390,9 @@ class Canvas(QWidget):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select MP4 File", "", "MP4 Files (*.mp4)")
         if file_path:
             self.square_files[square_id] = file_path
+            # Automatically set the alias to the file name (without extension)
+            file_name = os.path.splitext(os.path.basename(file_path))[0]
+            self.set_alias(square_id, file_name)
             print(f"Assigned/replaced file for square {square_id}: {file_path}")
             
             # Extract and store the preview image
