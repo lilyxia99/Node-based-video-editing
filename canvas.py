@@ -16,7 +16,10 @@ class Canvas(QWidget):
         self.dragging_dot = None  # Currently dragging a dot
         self.connections = []  # List of connections between dots
         self.temp_line = None  # Temporary line while dragging
+        
         self.selected_square = None  # Currently selected square
+        self.selected_connection = None  # Track the currently selected line
+        
         self.square_files = {}  # Mapping of square IDs to file paths
         self.video_player = VideoPlayer()
         self.sequence_names = {}  # Map sequence names to video paths
@@ -159,6 +162,23 @@ class Canvas(QWidget):
                 painter.drawText(self.width() // 2 - 150, self.height() // 2 - 20, f"File: {file_name}")
                 painter.drawText(self.width() // 2 - 150, self.height() // 2, f"Path: {file_path}")
 
+        # Draw connections
+        for conn in self.connections:
+            start_square, end_square = conn
+            start_x, start_y, size, _ = start_square
+            end_x, end_y, size, _ = end_square
+            start_dot = QPointF(start_x + size, start_y)
+            end_dot = QPointF(end_x + size, end_y)
+
+            # Highlight selected connection
+            if conn == self.selected_connection:
+                painter.setPen(QPen(QColor("pink"), 4))  # Thicker pink line
+            else:
+                painter.setPen(QPen(QColor("white"), 2))
+
+            painter.drawLine(start_dot, end_dot)
+            self.draw_arrow(painter, start_dot, end_dot)
+        
         # Display connection sequences
         painter.setPen(QPen(QColor("white"), 1))
         y_offset = self.height() - 20
@@ -200,9 +220,38 @@ class Canvas(QWidget):
                 self.drag_offset = event.pos() - QPoint(x, y)
                 self.update()
                 return
+            
+        # Check if a line is clicked
+        for conn in self.connections:
+            start_square, end_square = conn
+            start_x, start_y, size, _ = start_square
+            end_x, end_y, size, _ = end_square
+            start_dot = QPointF(start_x + size, start_y)
+            end_dot = QPointF(end_x + size, end_y)
 
+            # Check distance from the click position to the line
+            if self.is_point_near_line(event.pos(), start_dot, end_dot):
+                self.selected_connection = conn
+                self.update()
+                return
+        
+        # Clear selection if no line or square is clicked
+        self.selected_connection = None
         self.selected_square = None
         self.update()
+
+    def is_point_near_line(self, point, line_start, line_end, tolerance=5):
+        """Check if a point is near a line segment within a given tolerance."""
+        line_vec = line_end - line_start
+        point_vec = point - line_start
+        line_len = line_vec.x() ** 2 + line_vec.y() ** 2
+        if line_len == 0:
+            return (point - line_start).manhattanLength() <= tolerance  # Point case
+
+        t = max(0, min(1, QPointF.dotProduct(point_vec, line_vec) / line_len))
+        projection = line_start + t * line_vec
+        return (point - projection).manhattanLength() <= tolerance
+
 
 ## Mouse Events--------------------------
 
